@@ -1,0 +1,196 @@
+﻿@page "/"
+@using System.Globalization
+@using System.Text.Json
+@inject IJSRuntime JS
+
+<PageTitle>Roulette Journal – Dashboard</PageTitle>
+
+<div class="app-shell">
+    <aside class="sidebar">
+        <a class="brand" href="/" aria-label="Roulette Journal Startseite">
+            <span class="brand-icon"><MudIcon Icon="@Icons.Material.Filled.Casino" /></span>
+            <span>ROULETTE<span class="brand-accent">.</span><small>JOURNAL</small></span>
+        </a>
+        <div class="sidebar-label">ÜBERSICHT</div>
+        <a class="nav-item active" href="#dashboard"><MudIcon Icon="@Icons.Material.Filled.GridView" /> Dashboard</a>
+        <a class="nav-item" href="#verlauf"><MudIcon Icon="@Icons.Material.Filled.History" /> Spielverlauf</a>
+        <a class="nav-item" href="#statistiken"><MudIcon Icon="@Icons.Material.Filled.BarChart" /> Statistiken</a>
+        <div class="sidebar-bottom">
+            <div class="sidebar-note-icon"><MudIcon Icon="@Icons.Material.Outlined.Lightbulb" /></div>
+            <strong>Gut zu wissen</strong>
+            <p>Jeder Dreh ist unabhängig. Vergangene Ergebnisse sagen zukünftige Zahlen nicht voraus.</p>
+        </div>
+        <div class="sidebar-footer"><span class="status-dot"></span> Dein persönliches Journal</div>
+    </aside>
+
+    <main class="main-content" id="dashboard">
+        <header class="topbar">
+            <div class="breadcrumb">ÜBERSICHT <span>/</span> <strong>DASHBOARD</strong></div>
+            <div class="topbar-right"><span class="status-dot"></span> EUROPÄISCHES ROULETTE <span class="topbar-divider"></span><span class="avatar">RJ</span></div>
+        </header>
+
+        <div class="page-content">
+            <div class="page-heading">
+                <div><div class="eyebrow"><span></span> DEIN SPIEL IM ÜBERBLICK</div><h1>Roulette Dashboard<span class="heading-dot">.</span></h1><p>Alle Zahlen. Alle Statistiken. Ein klarer Überblick.</p></div>
+                <div class="session-pill"><span class="status-dot"></span> LOKALES JOURNAL</div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(error))
+            {
+                <div class="error-message" role="alert">@error</div>
+            }
+
+            <section class="summary-grid" aria-label="Zusammenfassung">
+                <div class="summary-card"><div class="summary-top"><span>ERFASSTE DREHS</span><span class="summary-icon gold"><MudIcon Icon="@Icons.Material.Outlined.Autorenew" /></span></div><div class="summary-value">@spins.Count</div><div class="summary-foot">Zahlen im Verlauf</div></div>
+                <div class="summary-card"><div class="summary-top"><span>LETZTE ZAHL</span><span class="summary-icon green"><MudIcon Icon="@Icons.Material.Outlined.History" /></span></div><div class="summary-value">@if (spins.Count > 0) { <span class="number-ball small @NumberColor(spins[^1])">@spins[^1]</span> } else { <span>–</span> }</div><div class="summary-foot">Zuletzt eingetragen</div></div>
+                <div class="summary-card"><div class="summary-top"><span>HÄUFIGSTE ZAHL</span><span class="summary-icon gold"><MudIcon Icon="@Icons.Material.Outlined.EmojiEvents" /></span></div><div class="summary-value @(spins.Count > 0 ? $"roulette-text-{NumberColor(MostFrequent.First())}" : "")" title="@string.Join(", ", MostFrequent)">@(spins.Count == 0 ? "–" : MostFrequent.First().ToString())</div><div class="summary-foot">@(spins.Count == 0 ? "Noch keine Daten" : $"{MaxCount}× erschienen{(MostFrequent.Count() > 1 ? $" · {MostFrequent.Count()} gleichauf" : "")}")</div></div>
+                <div class="summary-card"><div class="summary-top"><span>ROT / SCHWARZ / GRÜN</span><span class="summary-icon red"><MudIcon Icon="@Icons.Material.Outlined.PieChartOutline" /></span></div><div class="summary-value split-value"><span class="roulette-text-red">@RedCount</span><span class="split-slash">/</span><span class="roulette-text-black">@BlackCount</span><span class="split-slash">/</span><span class="roulette-text-green">@ZeroCount</span></div><div class="summary-foot"><span class="legend-dot red-dot"></span> Rot <span class="legend-dot black-dot"></span> Schwarz <span class="legend-dot green-dot"></span> Grün (0)</div></div>
+            </section>
+
+            <div class="dashboard-grid">
+                <section class="panel entry-panel" aria-labelledby="entry-title">
+                    <div class="panel-header"><div><div class="section-kicker">NEUER EINTRAG</div><h2 id="entry-title">Zahl erfassen</h2><p>Zahl eingeben und mit Enter speichern.</p></div><span class="panel-icon"><MudIcon Icon="@Icons.Material.Outlined.AddCircleOutline" /></span></div>
+                    <form class="number-entry" @onsubmit="AddSpin" @onsubmit:preventDefault>
+                        <label for="roulette-number">Gefallene Zahl (0–36)</label>
+                        <div class="number-entry-row">
+                            <input id="roulette-number" @ref="numberInput" type="text" inputmode="numeric" autocomplete="off" placeholder="0–36" @bind="numberText" @bind:event="oninput" disabled="@(!loaded)" readonly="@busy" aria-invalid="@(inputError is not null ? "true" : "false")" aria-describedby="number-feedback" />
+                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Class="add-button" StartIcon="@Icons.Material.Filled.Add" Disabled="@(!loaded || busy)">SPEICHERN</MudButton>
+                        </div>
+                        <div id="number-feedback" class="input-feedback" aria-live="polite">@if (inputError is not null) { <span class="input-error">@inputError</span> } else { <span>Enter speichert · danach direkt die nächste Zahl eingeben.</span> }</div>
+                    </form>
+                </section>
+
+                <section class="panel frequent-panel" id="statistiken" aria-labelledby="frequent-title">
+                    <div class="panel-header"><div><div class="section-kicker">ZAHLEN IM FOKUS</div><h2 id="frequent-title">Häufigste Zahlen</h2><p>Die meistgefallenen Zahlen im Überblick.</p></div><span class="panel-icon"><MudIcon Icon="@Icons.Material.Outlined.Leaderboard" /></span></div>
+                    @if (spins.Count == 0)
+                    {
+                        <div class="empty-state"><span class="empty-icon"><MudIcon Icon="@Icons.Material.Outlined.BarChart" /></span><strong>Noch keine Statistiken</strong><p>Erfasse deine erste Zahl, um die Auswertung zu sehen.</p></div>
+                    }
+                    else
+                    {
+                        <div class="frequency-list">
+                            @foreach (var item in Frequencies.Take(5))
+                            {
+                                <div class="frequency-row"><span class="number-ball @NumberColor(item.Number)">@item.Number</span><div class="frequency-detail"><div class="frequency-label"><strong>Nummer @item.Number</strong><span>@item.Count× <small>(@Percent(item.Count))</small></span></div><div class="bar-track"><div class="bar-fill @NumberColor(item.Number)" style="width: @BarWidth(item.Count)"></div></div></div></div>
+                            }
+                        </div>
+                        <div class="frequency-foot">Anteil an allen @spins.Count erfassten Drehs</div>
+                    }
+                </section>
+
+                <section class="panel history-panel" id="verlauf" aria-labelledby="history-title">
+                    <div class="panel-header history-header"><div><div class="section-kicker">DEINE LETZTEN DREHS</div><h2 id="history-title">Spielverlauf <span class="count-badge">@spins.Count</span></h2><p>Die neuesten Ergebnisse zuerst.</p></div><div class="history-actions"><MudButton Variant="Variant.Text" Class="subtle-button" StartIcon="@Icons.Material.Outlined.Undo" Disabled="@(!loaded || busy || spins.Count == 0)" OnClick="UndoSpin">LETZTEN ENTFERNEN</MudButton><MudButton Variant="Variant.Text" Class="subtle-button" Disabled="@(!loaded || busy || spins.Count == 0)" OnClick="() => confirmingClear = true">VERLAUF LÖSCHEN</MudButton></div></div>
+                    @if (confirmingClear)
+                    {
+                        <div class="confirm-clear" role="alert"><span>Den gesamten Verlauf wirklich löschen?</span><MudButton Color="Color.Error" Disabled="@busy" OnClick="ClearSpins">LÖSCHEN</MudButton><MudButton Disabled="@busy" OnClick="() => confirmingClear = false">ABBRECHEN</MudButton></div>
+                    }
+                    else if (spins.Count == 0)
+                    {
+                        <div class="history-empty"><MudIcon Icon="@Icons.Material.Outlined.History" /><span>Noch keine Zahlen erfasst. Dein Verlauf erscheint hier.</span></div>
+                    }
+                    else
+                    {
+                        <div class="history-list">@foreach (var number in spins.AsEnumerable().Reverse().Skip(historyPage * HistoryPageSize).Take(HistoryPageSize)) { <span class="number-ball @NumberColor(number)" title="@ColorLabel(number)">@number</span> }</div>
+                        <div class="history-pagination">
+                            <span>@(historyPage * HistoryPageSize + 1)–@Math.Min((historyPage + 1) * HistoryPageSize, spins.Count) von @spins.Count</span>
+                            <div><MudButton Class="subtle-button" Disabled="@(historyPage == 0 || busy)" OnClick="() => historyPage--">NEUERE</MudButton><MudButton Class="subtle-button" Disabled="@((historyPage + 1) * HistoryPageSize >= spins.Count || busy)" OnClick="() => historyPage++">ÄLTERE</MudButton></div>
+                        </div>
+                    }
+                </section>
+            </div>
+            <footer class="page-footer"><span>ROULETTE JOURNAL <span>©</span> DEIN PERSÖNLICHER ÜBERBLICK</span><span>BEWUSST SPIELEN <span class="footer-dot">●</span></span></footer>
+        </div>
+    </main>
+</div>
+
+@code {
+    private const string StorageKey = "roulette-journal-spins-v1";
+    private static readonly HashSet<int> RedNumbers = [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36];
+    private const int HistoryPageSize = 10;
+    private List<int> spins = [];
+    private string numberText = "";
+    private ElementReference numberInput;
+    private bool loaded;
+    private bool busy;
+    private bool confirmingClear;
+    private int historyPage;
+    private string? inputError;
+    private string? error;
+
+    private int RedCount => spins.Count(RedNumbers.Contains);
+    private int ZeroCount => spins.Count(number => number == 0);
+    private int BlackCount => spins.Count - RedCount - ZeroCount;
+    private IEnumerable<(int Number, int Count)> Frequencies => spins.GroupBy(number => number).Select(group => (Number: group.Key, Count: group.Count())).OrderByDescending(item => item.Count).ThenBy(item => item.Number);
+    private int MaxCount => Frequencies.Select(item => item.Count).FirstOrDefault();
+    private IEnumerable<int> MostFrequent => Frequencies.Where(item => item.Count == MaxCount).Select(item => item.Number);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            var stored = await JS.InvokeAsync<string?>("localStorage.getItem", StorageKey);
+            if (stored is not null)
+            {
+                var saved = JsonSerializer.Deserialize<List<int>>(stored);
+                if (saved is null || saved.Any(number => number < 0 || number > 36))
+                    throw new JsonException("Ungültiger Verlauf.");
+                spins = saved;
+            }
+            loaded = true;
+        }
+        catch (JSException)
+        {
+            error = "Der lokale Speicher ist nicht verfügbar. Bitte prüfe deine Browsereinstellungen und lade die Seite neu.";
+        }
+        catch (JsonException)
+        {
+            error = "Der gespeicherte Verlauf ist ungültig und konnte nicht geladen werden. Die gespeicherten Daten wurden nicht verändert.";
+        }
+        StateHasChanged();
+    }
+
+    private async Task<bool> SaveSpins(List<int> updated)
+    {
+        busy = true;
+        error = null;
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", StorageKey, JsonSerializer.Serialize(updated));
+            spins = updated;
+            historyPage = 0;
+            confirmingClear = false;
+            return true;
+        }
+        catch (JSException)
+        {
+            error = "Der Verlauf konnte nicht gespeichert werden. Bitte prüfe den lokalen Speicher deines Browsers.";
+            return false;
+        }
+        finally { busy = false; }
+    }
+
+    private async Task AddSpin()
+    {
+        if (!loaded || busy) return;
+
+        inputError = null;
+        if (!int.TryParse(numberText.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var number) || number is < 0 or > 36)
+        {
+            inputError = "Bitte eine ganze Zahl von 0 bis 36 eingeben.";
+        }
+        else if (await SaveSpins([.. spins, number]))
+        {
+            numberText = "";
+        }
+
+        await numberInput.FocusAsync(preventScroll: true);
+    }
+
+    private Task UndoSpin() => SaveSpins(spins.Take(spins.Count - 1).ToList());
+    private Task ClearSpins() => SaveSpins([]);
+    private static string NumberColor(int number) => number == 0 ? "green" : RedNumbers.Contains(number) ? "red" : "black";
+    private static string ColorLabel(int number) => number == 0 ? "Grün" : RedNumbers.Contains(number) ? "Rot" : "Schwarz";
+    private string Percent(int count) => $"{(100.0 * count / spins.Count).ToString("0.0", CultureInfo.GetCultureInfo("de-DE"))} %";
+    private string BarWidth(int count) => $"{(100.0 * count / spins.Count).ToString("0.##", CultureInfo.InvariantCulture)}%";
+}
